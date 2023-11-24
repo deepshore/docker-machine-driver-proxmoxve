@@ -25,8 +25,6 @@ import (
 type Driver struct {
 	*drivers.BaseDriver
 	client *proxmox.Client
-	// Top-level strategy for proisioning a new node
-	ProvisionStrategy string
 
 	// Basic Authentication for Proxmox VE
 	Host     string // Host to connect to
@@ -348,8 +346,6 @@ func (d *Driver) DriverName() string {
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.debug("SetConfigFromFlags called")
 
-	d.ProvisionStrategy = flags.String("proxmoxve-provision-strategy")
-
 	// PROXMOX API Connection settings
 	d.Host = flags.String("proxmoxve-proxmox-host")
 	d.Port = flags.String("proxmoxve-proxmox-port")
@@ -443,6 +439,7 @@ func (d *Driver) GetNode() (*proxmox.Node, error) {
 }
 
 func (d *Driver) ConfigureVM(name string, value string) error {
+	d.debugf("ConfigureVM: %s %s", name, value)
 	vm, err := d.GetVM()
 	if err != nil {
 		return err
@@ -461,6 +458,8 @@ func (d *Driver) ConfigureVM(name string, value string) error {
 	if err4 := configTask.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err4 != nil {
 		return err4
 	}
+
+	d.debugf("Config task finished")
 
 	return nil
 }
@@ -614,70 +613,6 @@ func (d *Driver) PreCreateCheck() error {
 		d.client = client
 	}
 
-	switch d.ProvisionStrategy {
-	case "cdrom":
-		// set defaults for cdrom
-		// replicating pre-clone behavior of setting a default on the parameter
-		if len(d.Storage) < 1 {
-			d.Storage = "local"
-		}
-
-		if len(d.StorageType) < 1 {
-			d.StorageType = "raw"
-		}
-
-		if len(d.NetBridge) < 1 {
-			d.NetBridge = "vmbr0"
-		}
-
-		if len(d.GuestUsername) < 1 {
-			d.GuestUsername = "docker"
-		}
-
-		if len(d.GuestPassword) < 1 {
-			d.GuestPassword = "tcuser"
-		}
-
-		// prepare StorageFilename
-		switch d.StorageType {
-		case "raw":
-			fallthrough
-		case "qcow2":
-			break
-		default:
-			return fmt.Errorf("storage type '%s' is not supported", d.StorageType)
-		}
-
-		node, err := d.client.Node(context.Background(), d.Node)
-		if err != nil {
-			return err
-		}
-
-		storage, err := node.Storage(context.Background(), d.Storage)
-
-		filename := "-disk-0"
-		switch storage.Type {
-		case "lvmthin":
-			fallthrough
-		case "zfs":
-			fallthrough
-		case "ceph":
-			if d.StorageType != "raw" {
-				return fmt.Errorf("type '%s' on storage '%s' does only support raw", storage.Type, d.Storage)
-			}
-		case "nfs":
-			fallthrough
-		case "dir":
-			filename += "." + d.StorageType
-		}
-		// this is not the finale filename, it'll be constructed in Create()
-		d.StorageFilename = filename
-	case "clone":
-		break
-	default:
-		return fmt.Errorf("invalid provision strategy '%s'", d.ProvisionStrategy)
-	}
-
 	return nil
 }
 
@@ -696,139 +631,118 @@ func (d *Driver) Create() error {
 	key = fmt.Sprintf("%s %s-%d", key, d.MachineName, time.Now().Unix())
 	// !! End workaround for MC-7982.
 
-	switch d.ProvisionStrategy {
-	case "clone":
+	clone := &proxmox.VirtualMachineCloneOptions{
+		Name:    d.MachineName,
+		Full:    1,
+		Pool:    d.Pool,
+		Format:  d.StorageType,
+		Storage: d.Storage,
+	}
 
-		clone := &proxmox.VirtualMachineCloneOptions{
-			Name: d.MachineName,
-			Full: 1,
-			Pool: d.Pool,
-		}
+	d.debugf("cloning new vm from template id '%s'", d.CloneVMID)
 
-		switch d.CloneFull {
-		case 0:
-			clone.Full = 0
-			break
-		case 1:
-			clone.Full = 1
-			clone.Format = d.StorageType
-			clone.Storage = d.Storage
-			break
-		case 2:
-			clone.Format = d.StorageType
-			clone.Storage = d.Storage
-			break
-		}
+	node, err := d.client.Node(context.Background(), d.Node)
+	if err != nil {
+		return err
+	}
 
-		d.debugf("cloning new vm from template id '%s'", d.CloneVMID)
+	cloneVmId, err := strconv.Atoi(d.CloneVMID)
+	if err != nil {
+		return err
+	}
 
-		node, err := d.client.Node(context.Background(), d.Node)
+	clonevm, err := node.VirtualMachine(context.Background(), cloneVmId)
+	if err != nil {
+		return err
+	}
+
+	newId, task, err := clonevm.Clone(context.Background(), clone)
+
+	if err != nil {
+		return err
+	}
+
+	// wait for the clone task
+	if err := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err != nil {
+		return err
+	}
+	d.debugf("clone finished for vmid '%d'", newId)
+
+	// explicity set vmid after clone completion to be sure
+	d.VMID = fmt.Sprint(newId)
+	d.VMID_int = newId
+
+	d.debugf("vmid values VMID: '%s' VMID_int: '%d'", d.VMID, d.VMID_int)
+
+	// resize
+	d.debugf("resizing disk '%s' on vmid '%s' to '%s'", "scsi0", d.VMID, d.DiskSize+"G")
+
+	vm, err4 := d.GetVM()
+	if err4 != nil {
+		return err4
+	}
+	err5 := vm.ResizeDisk(context.Background(), "scsi0", d.DiskSize+"G")
+	if err5 != nil {
+		return err5
+	}
+
+	d.debugf("add misc configuration options")
+
+	d.ConfigureVM("agent", "1")
+	d.ConfigureVM("autostart", "1")
+	d.ConfigureVM("memory", fmt.Sprint(d.Memory))
+	d.ConfigureVM("sockets", d.CPUSockets)
+	d.ConfigureVM("cores", d.CPUCores)
+	d.ConfigureVM("kvm", "1")
+	d.ConfigureVM("citype", d.Citype)
+	d.ConfigureVM("onboot", d.Onboot)
+	d.ConfigureVM("protection", d.Protection)
+
+	if len(d.NetBridge) > 0 {
+		d.ConfigureVM("Net0", d.generateNetString())
+	}
+
+	if len(d.NUMA) > 0 {
+		d.ConfigureVM("NUMA", d.NUMA)
+	}
+
+	if len(d.CPU) > 0 {
+		d.ConfigureVM("CPU", d.CPU)
+	}
+
+	// append newly minted ssh key to existing (if any)
+	d.debugf("retrieving existing cloud-init sshkeys from vmid '%s'", d.VMID)
+	var SSHKeys string
+
+	if len(vm.VirtualMachineConfig.SSHKeys) > 0 {
+		SSHKeys, err = url.QueryUnescape(vm.VirtualMachineConfig.SSHKeys)
 		if err != nil {
 			return err
 		}
 
-		cloneVmId, err := strconv.Atoi(d.CloneVMID)
-		if err != nil {
-			return err
-		}
-
-		clonevm, err := node.VirtualMachine(context.Background(), cloneVmId)
-		if err != nil {
-			return err
-		}
-
-		newId, task, err := clonevm.Clone(context.Background(), clone)
-
-		if err != nil {
-			return err
-		}
-
-		// wait for the clone task
-		if err := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err != nil {
-			return err
-		}
-		d.debugf("clone finished for vmid '%d'", newId)
-
-		// explicity set vmid after clone completion to be sure
-		d.VMID = fmt.Sprint(newId)
-		d.VMID_int = newId
-
-		d.debugf("vmid values VMID: '%s' VMID_int: '%d'", d.VMID, d.VMID_int)
-
-		// resize
-		d.debugf("resizing disk '%s' on vmid '%s' to '%s'", "scsi0", d.VMID, d.DiskSize+"G")
-
-		vm, err4 := d.GetVM()
-		if err4 != nil {
-			return err4
-		}
-		err5 := vm.ResizeDisk(context.Background(), "scsi0", d.DiskSize+"G")
-		if err5 != nil {
-			return err5
-		}
-
-		d.debugf("add misc configuration options")
-
-		d.ConfigureVM("Agent", "1")
-		d.ConfigureVM("Autostart", "1")
-		d.ConfigureVM("Memory", fmt.Sprint(d.Memory))
-		d.ConfigureVM("Sockets", d.CPUSockets)
-		d.ConfigureVM("Cores", d.CPUCores)
-		d.ConfigureVM("KVM", "1")
-		d.ConfigureVM("Citype", d.Citype)
-		d.ConfigureVM("Onboot", d.Onboot)
-		d.ConfigureVM("Protection", d.Protection)
-
-		if len(d.NetBridge) > 0 {
-			d.ConfigureVM("Net0", d.generateNetString())
-		}
-
-		if len(d.NUMA) > 0 {
-			d.ConfigureVM("NUMA", d.NUMA)
-		}
-
-		if len(d.CPU) > 0 {
-			d.ConfigureVM("CPU", d.CPU)
-		}
-
-		// append newly minted ssh key to existing (if any)
-		d.debugf("retrieving existing cloud-init sshkeys from vmid '%s'", d.VMID)
-		var SSHKeys string
-
-		if len(vm.VirtualMachineConfig.SSHKeys) > 0 {
-			SSHKeys, err = url.QueryUnescape(vm.VirtualMachineConfig.SSHKeys)
-			if err != nil {
-				return err
-			}
-
-			SSHKeys = strings.TrimSpace(SSHKeys)
-			SSHKeys += "\n"
-		}
-
-		SSHKeys += key
 		SSHKeys = strings.TrimSpace(SSHKeys)
+		SSHKeys += "\n"
+	}
 
-		// specially handle setting sshkeys
-		// https://forum.proxmox.com/threads/how-to-use-pvesh-set-vms-sshkeys.52570/
-		newVM, err2 := d.GetVM()
-		log.Debug(newVM.VMID)
-		if err2 != nil {
-			return err2
-		}
+	SSHKeys += key
+	SSHKeys = strings.TrimSpace(SSHKeys)
 
-		r := strings.NewReplacer("+", "%2B", "=", "%3D", "@", "%40")
+	// specially handle setting sshkeys
+	// https://forum.proxmox.com/threads/how-to-use-pvesh-set-vms-sshkeys.52570/
+	newVM, err2 := d.GetVM()
+	log.Debug(newVM.VMID)
+	if err2 != nil {
+		return err2
+	}
 
-		SSHKeys = url.PathEscape(SSHKeys)
-		SSHKeys = r.Replace(SSHKeys)
+	r := strings.NewReplacer("+", "%2B", "=", "%3D", "@", "%40")
 
-		err3 := d.ConfigureVM("sshkeys", SSHKeys)
-		if err3 != nil {
-			return err3
-		}
+	SSHKeys = url.PathEscape(SSHKeys)
+	SSHKeys = r.Replace(SSHKeys)
 
-		break
-	default:
-		return fmt.Errorf("invalid provision strategy '%s'", d.ProvisionStrategy)
+	err3 := d.ConfigureVM("sshkeys", SSHKeys)
+	if err3 != nil {
+		return err3
 	}
 
 	// start the VM
