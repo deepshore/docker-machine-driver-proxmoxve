@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -28,6 +30,7 @@ type Driver struct {
 
 	// Basic Authentication for Proxmox VE
 	Host     string // Host to connect to
+	Port     string // Port to connect to (default 8006)
 	Node     string // optional, node to create VM on, host used if omitted but must match internal node name
 	User     string // username
 	Password string // password
@@ -96,15 +99,25 @@ func (d *Driver) debug(v ...interface{}) {
 }
 
 func (d *Driver) connectApi() (client *proxmox.Client, err error) {
-	credentials := proxmox.Credentials{
-		Username: "root@pam",
-		Password: "12345",
-	}
-	d.client = proxmox.NewClient("https://localhost:8006/api2/json",
-		proxmox.WithCredentials(&credentials),
-	)
+	var options []proxmox.Option
 
-	version, err := client.Version(context.Background())
+	options = append(options, proxmox.WithHTTPClient(&http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}))
+	credentials := proxmox.Credentials{
+		Username: d.User,
+		Password: d.Password,
+		Realm:    d.Realm,
+	}
+	options = append(options, proxmox.WithCredentials(&credentials))
+
+	proxmoxUrl := fmt.Sprintf("https://%s:%s/api2/json", d.Host, d.Port)
+	log.Debug(fmt.Sprintf("Connecting to %s", proxmoxUrl))
+	d.client = proxmox.NewClient(proxmoxUrl, options...)
+
+	version, err := d.client.Version(context.Background())
 	if err == nil {
 		log.Info(version.Release)
 	}
@@ -119,6 +132,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "proxmoxve-proxmox-host",
 			Usage:  "Host to connect to",
 			Value:  "192.168.1.253",
+		},
+		mcnflag.StringFlag{
+			EnvVar: "PROXMOXVE_PROXMOX_PORT",
+			Name:   "proxmoxve-proxmox-port",
+			Usage:  "Port to connect to",
+			Value:  "8006",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "PROXMOXVE_PROXMOX_NODE",
@@ -333,6 +352,10 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 
 	// PROXMOX API Connection settings
 	d.Host = flags.String("proxmoxve-proxmox-host")
+	d.Port = flags.String("proxmoxve-proxmox-port")
+	if len(d.Port) == 0 {
+		d.Port = "8006"
+	}
 	d.Node = flags.String("proxmoxve-proxmox-node")
 	if len(d.Node) == 0 {
 		d.Node = d.Host
@@ -366,6 +389,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.NetVlanTag = flags.Int("proxmoxve-vm-net-tag")
 	d.ScsiController = flags.String("proxmoxve-vm-scsi-controller")
 	d.ScsiAttributes = flags.String("proxmoxve-vm-scsi-attributes")
+	d.driverDebug = flags.Bool("proxmoxve-debug-driver")
 
 	//SSH connection settings
 	d.GuestSSHPort = flags.Int("proxmoxve-ssh-port")
@@ -403,6 +427,14 @@ func (d *Driver) GetNetVlanTag() int {
 }
 
 func (d *Driver) GetNode() (*proxmox.Node, error) {
+	if d.client == nil {
+		client, err := d.connectApi()
+		if err != nil {
+			return nil, err
+		}
+		d.client = client
+	}
+
 	n, err := d.client.Node(context.Background(), d.Node)
 	if err != nil {
 		return nil, err
@@ -440,9 +472,6 @@ func (d *Driver) OperateVM(operation string) error {
 		return err
 	}
 
-	var task proxmox.Task
-	var err2 error
-
 	switch operation {
 	case "start":
 		task, err2 := vm.Start(context.Background())
@@ -450,11 +479,19 @@ func (d *Driver) OperateVM(operation string) error {
 		if err2 != nil {
 			return err2
 		}
+		// wait for the task
+		if err3 := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err3 != nil {
+			return err3
+		}
 	case "stop":
 		task, err2 := vm.Stop(context.Background())
 		log.Debug(task.ID)
 		if err2 != nil {
 			return err2
+		}
+		// wait for the task
+		if err3 := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err3 != nil {
+			return err3
 		}
 	case "kill":
 		task, err2 := vm.Stop(context.Background())
@@ -462,24 +499,22 @@ func (d *Driver) OperateVM(operation string) error {
 		if err2 != nil {
 			return err2
 		}
+		// wait for the task
+		if err3 := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err3 != nil {
+			return err3
+		}
 	case "restart":
 		task, err2 := vm.Reset(context.Background())
 		log.Debug(task.ID)
 		if err2 != nil {
 			return err2
 		}
+		// wait for the task
+		if err3 := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err3 != nil {
+			return err3
+		}
 	default:
 		return errors.New("Invalid operation: " + operation)
-
-	}
-
-	if err2 != nil {
-		return err2
-	}
-
-	// wait for the start task
-	if err2 := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err2 != nil {
-		return err2
 	}
 
 	return err
@@ -661,34 +696,13 @@ func (d *Driver) Create() error {
 	key = fmt.Sprintf("%s %s-%d", key, d.MachineName, time.Now().Unix())
 	// !! End workaround for MC-7982.
 
-	// get next available VMID
-	// NOTE: we want to lock in the ID as quickly as possible after retrieving (ie: invoke QemuPost or Clone ASAP to avoid race conditions with other instances)
-	d.debug("Retrieving next ID")
-
-	cluster, err := d.client.Cluster(context.Background())
-	if err != nil {
-		return err
-	}
-
-	id, err := cluster.NextID(context.Background())
-	if err != nil {
-		return err
-	}
-
-	d.debugf("Next ID is '%s'", id)
-	d.VMID = fmt.Sprint(id)
-	d.VMID_int = id
-
-	var newVM proxmox.VirtualMachine
-
 	switch d.ProvisionStrategy {
 	case "clone":
 
 		clone := &proxmox.VirtualMachineCloneOptions{
-			Name:  d.MachineName,
-			Full:  1,
-			NewID: d.VMID_int,
-			Pool:  d.Pool,
+			Name: d.MachineName,
+			Full: 1,
+			Pool: d.Pool,
 		}
 
 		switch d.CloneFull {
@@ -706,7 +720,7 @@ func (d *Driver) Create() error {
 			break
 		}
 
-		d.debugf("cloning template id '%s' as vmid '%s'", d.CloneVMID, clone.NewID)
+		d.debugf("cloning new vm from template id '%s'", d.CloneVMID)
 
 		node, err := d.client.Node(context.Background(), d.Node)
 		if err != nil {
@@ -724,6 +738,7 @@ func (d *Driver) Create() error {
 		}
 
 		newId, task, err := clonevm.Clone(context.Background(), clone)
+
 		if err != nil {
 			return err
 		}
@@ -732,10 +747,13 @@ func (d *Driver) Create() error {
 		if err := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err != nil {
 			return err
 		}
+		d.debugf("clone finished for vmid '%d'", newId)
 
 		// explicity set vmid after clone completion to be sure
 		d.VMID = fmt.Sprint(newId)
 		d.VMID_int = newId
+
+		d.debugf("vmid values VMID: '%s' VMID_int: '%d'", d.VMID, d.VMID_int)
 
 		// resize
 		d.debugf("resizing disk '%s' on vmid '%s' to '%s'", "scsi0", d.VMID, d.DiskSize+"G")
@@ -748,6 +766,8 @@ func (d *Driver) Create() error {
 		if err5 != nil {
 			return err5
 		}
+
+		d.debugf("add misc configuration options")
 
 		d.ConfigureVM("Agent", "1")
 		d.ConfigureVM("Autostart", "1")
@@ -822,14 +842,21 @@ func (d *Driver) Create() error {
 	time.Sleep(10 * time.Second)
 
 	// wait for qemu-guest-agent
-	err = newVM.WaitForAgent(context.Background(), 300)
+	/*
+		err = newVM.WaitForAgent(context.Background(), 300)
+		if err != nil {
+			return err
+		}
+	*/
+
+	// wait for network to come up
+	d.debugf("wait for network")
+	err = d.waitForNetwork()
 	if err != nil {
 		return err
 	}
 
-	// wait for network to come up
-	err = d.waitForNetwork()
-
+	d.debugf("VM network is up. set ip")
 	// set the IPAddress
 	_, err = d.GetIP()
 	if err != nil {
@@ -934,8 +961,7 @@ func (d *Driver) Remove() error {
 }
 
 func (d *Driver) createSSHKey() (string, error) {
-	var sshKeyPath string
-	sshKeyPath = d.GetSSHKeyPath()
+	var sshKeyPath = d.GetSSHKeyPath()
 
 	if err := ssh.GenerateSSHKey(sshKeyPath); err != nil {
 		return "", err
