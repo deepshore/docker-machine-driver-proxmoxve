@@ -25,3 +25,38 @@ But do not worry, we have everything in place to get you running: go to the [ans
 - Dropped support for isos
 - Improved workflow to execute go test and produce outputs in PRs
 - Added Makefile for all ci / cd steps
+
+### Version v.4.0.4-ds
+
+* Dependency updates
+* automated go mod build and release point in github
+
+### Version 4
+
+* [support for using clones+cloud-init](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/pull/34) (Thanks to @travisghansen)
+* [enable custom network bridge without vlan tag](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/pull/30) (Thanks to @guyguy333)
+* [including args to choice scsi model](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/pull/28) (Thanks to @bemanuel)
+* [fix remove error, add further flags](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/pull/26) (Thanks to @Psayker)
+
+### Version 3
+
+* [Renaming driver from `proxmox-ve` to `proxmoxve` due to identification problem with RancherOS's K8S implementation](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/pull/18) (Thanks to [`@Sellto` for reporting #16](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/issues/16))
+* fixing issue with created disk detection (Thanks to [`@Sellto` for reporting #16](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/issues/16))
+* [Add `IPAddress` property needed by rancher to know the ip address of the created VM](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/pull/18) (Thanks to `@Sellto`)
+* [Change the name of each flag for better display in the rancher `Node Templates`](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/pull/18) (Thanks to `@Sellto`)
+* [Add number of `CPU cores configuration paramater`](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/pull/18) (Thanks to `@Sellto`)
+* [LVM-thin fixes](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/pull/24) (Thanks to `@vstconsulting`)
+* [Bridge and VLAN tag support](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/pull/22) (Thanks to `@bemanuel`)
+* Fixing filename detection including NFS support
+
+### Version 2
+
+* exclusive RancherOS support due to their special Proxmox VE iso files
+* adding wait cycles for asynchronous background tasks, e.g.  `create`, `stop` etc.
+* use one logger engine
+* add guest username, password and ssh-port as new command line arguments
+* more and potentially better error handling
+
+### Version 1
+
+* Initial Version
