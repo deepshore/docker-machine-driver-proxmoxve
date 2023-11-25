@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -874,14 +875,40 @@ func (d *Driver) Remove() error {
 	return nil
 }
 
+func (d *Driver) GetVmidInRange() (int, error) {
+	// split d.VMIDRange into two parts by separating through ":"
+	vmidRange := strings.Split(d.VMIDRange, ":")
+	if len(vmidRange) != 2 {
+		return 0, fmt.Errorf("VMIDRange must be in the form of <min>:<max>. Given: %s", d.VMIDRange)
+	}
+
+	min, err := strconv.Atoi(vmidRange[0])
+	if err != nil {
+		return 0, err
+	}
+
+	max, err := strconv.Atoi(vmidRange[1])
+	if err != nil {
+		return 0, err
+	}
+
+	if min > max {
+		return 0, fmt.Errorf("VMIDRange must be in the form of <min>:<max>. Given: %s", d.VMIDRange)
+	}
+	// now randomly choose from min max range
+	return rand.Intn(max-min) + min, nil
+}
+
 func (d *Driver) createSSHKey() (string, error) {
 	var sshKeyPath = d.GetSSHKeyPath()
+	d.debugf("Creating SSH key at %s", sshKeyPath)
 
 	if err := ssh.GenerateSSHKey(sshKeyPath); err != nil {
 		return "", err
 	}
 
 	key, err := os.ReadFile(sshKeyPath + ".pub")
+	d.debugf("Read SSH key from %s: %s", sshKeyPath, key)
 	if err != nil {
 		return "", err
 	}

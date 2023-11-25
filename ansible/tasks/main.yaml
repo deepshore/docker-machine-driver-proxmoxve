@@ -3,8 +3,8 @@
   block:
     - name: Download cloud img
       get_url:
-        url: https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64.img
-        dest: /root/focal-server-cloudimg-amd64.img
+        url: https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-standard-3.18.4-x86_64.iso
+        dest: /root/alpine-standard-3.18.4-x86_64.
         mode: '0440'
 
     - name: Get next free VM ID
