@@ -58,8 +58,7 @@ type Driver struct {
 	ScsiController string
 	ScsiAttributes string
 
-	VMID          string // VM ID only filled by create()
-	VMID_int      int    // Same as VMID but int
+	VMID          int    // VM ID only filled by create()
 	VMIDRange     string // acceptable range of VMIDs
 	CloneVMID     string // VM ID to clone
 	CloneFull     int    // Make a full (detached) clone from parent (defaults to true if VMID is not a template, otherwise false)
@@ -402,7 +401,7 @@ func (d *Driver) GetNetVlanTag() int {
 	return d.NetVlanTag
 }
 
-func (d *Driver) GetNode() (*proxmox.Node, error) {
+func (d *Driver) GetNode(nodeName string) (*proxmox.Node, error) {
 	if d.client == nil {
 		client, err := d.connectApi()
 		if err != nil {
@@ -411,7 +410,7 @@ func (d *Driver) GetNode() (*proxmox.Node, error) {
 		d.client = client
 	}
 
-	n, err := d.client.Node(context.Background(), d.Node)
+	n, err := d.client.Node(context.Background(), nodeName)
 	if err != nil {
 		return nil, err
 	}
@@ -502,16 +501,16 @@ func (d *Driver) OperateVM(operation string) error {
 
 func (d *Driver) GetVM() (*proxmox.VirtualMachine, error) {
 	d.debugf("GetVM issued")
-	if len(d.VMID) < 1 {
+	if d.VMID < 1 {
 		return nil, errors.New("invalid VMID")
 	}
 
-	n, err := d.GetNode()
+	n, err := d.GetNode(d.Node)
 	d.debugf("GetNode returned: %v", n)
 	if err != nil {
 		return nil, err
 	}
-	vm, err2 := n.VirtualMachine(context.Background(), d.VMID_int)
+	vm, err2 := n.VirtualMachine(context.Background(), d.VMID)
 	if err2 != nil {
 		return nil, err2
 	}
@@ -647,10 +646,9 @@ func (d *Driver) Create() error {
 	d.debugf("clone finished for vmid '%d'", newId)
 
 	// explicity set vmid after clone completion to be sure
-	d.VMID = fmt.Sprint(newId)
-	d.VMID_int = newId
+	d.VMID = newId
 
-	d.debugf("vmid values VMID: '%s' VMID_int: '%d'", d.VMID, d.VMID_int)
+	d.debugf("vmid values VMID: '%d'", d.VMID)
 
 	// resize
 	d.debugf("resizing disk '%s' on vmid '%s' to '%s'", "scsi0", d.VMID, d.DiskSize+"G")
@@ -677,15 +675,15 @@ func (d *Driver) Create() error {
 	d.ConfigureVM("protection", d.Protection)
 
 	if len(d.NetBridge) > 0 {
-		d.ConfigureVM("Net0", d.generateNetString())
+		d.ConfigureVM("net0", d.generateNetString())
 	}
 
 	if len(d.NUMA) > 0 {
-		d.ConfigureVM("NUMA", d.NUMA)
+		d.ConfigureVM("numa", d.NUMA)
 	}
 
 	if len(d.CPU) > 0 {
-		d.ConfigureVM("CPU", d.CPU)
+		d.ConfigureVM("cpu", d.CPU)
 	}
 
 	// append newly minted ssh key to existing (if any)

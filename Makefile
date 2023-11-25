@@ -20,7 +20,7 @@ test-ci:
 clean:
 	rm -f report.xml test-output.log docker-machine-driver-proxmoxve
 
-install:
+install: build
 	docker-machine --version && mv docker-machine-driver-proxmoxve /usr/local/bin/docker-machine-driver-proxmoxve
 
 uninstall:
@@ -37,13 +37,15 @@ integration-test: clean build
     --proxmoxve-proxmox-user-password $$PVE_PASSWD \
     --proxmoxve-proxmox-realm $$PVE_REALM \
     --proxmoxve-proxmox-pool "$$PVE_POOL" \
-    --proxmoxve-provision-strategy clone \
-    --proxmoxve-vm-clone-vmid $$PVE_TEMPLATE_ID \
+    --proxmoxve-vm-clone-vmid $$PVE_CLONE_VMID \
     --proxmoxve-vm-memory 8 \
     --proxmoxve-ssh-username $$PVE_SSH_USER \
     --proxmoxve-ssh-password $$PVE_PASSWD \
-    --proxmoxve-vm-vmid-range 8500 \
+    --proxmoxve-vm-vmid-range 8500:9500 \
     \
     --proxmoxve-debug-driver \
     \
     $$VM_NAME
+
+undeploy:
+	docker-machine rm -y $$VM_NAME
