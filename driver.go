@@ -501,11 +501,13 @@ func (d *Driver) OperateVM(operation string) error {
 }
 
 func (d *Driver) GetVM() (*proxmox.VirtualMachine, error) {
+	d.debugf("GetVM issued")
 	if len(d.VMID) < 1 {
 		return nil, errors.New("invalid VMID")
 	}
 
 	n, err := d.GetNode()
+	d.debugf("GetNode returned: %v", n)
 	if err != nil {
 		return nil, err
 	}
@@ -513,6 +515,7 @@ func (d *Driver) GetVM() (*proxmox.VirtualMachine, error) {
 	if err2 != nil {
 		return nil, err2
 	}
+	d.debugf("GetVM returned: %v", vm)
 	return vm, err
 }
 
@@ -686,7 +689,16 @@ func (d *Driver) Create() error {
 	}
 
 	// append newly minted ssh key to existing (if any)
-	d.appendVmSshKeys()
+	SSHKeys, err2 := d.appendVmSshKeys(vm)
+	if err2 != nil {
+		return err2
+	}
+
+	err3 := d.ConfigureVM("sshkeys", SSHKeys)
+	d.debugf("cloud-init sshkeys set to '%s'", SSHKeys)
+	if err3 != nil {
+		return err3
+	}
 
 	// start the VM
 	err = d.Start()
@@ -705,12 +717,12 @@ func (d *Driver) Create() error {
 	return nil
 }
 
-func (d *Driver) appendVmSshKeys() error {
+func (d *Driver) appendVmSshKeys(vm *proxmox.VirtualMachine) (string, error) {
 	// create and save a new SSH key pair
 	d.debug("creating new ssh keypair")
 	key, err := d.createSSHKey()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// !! Workaround for MC-7982.
@@ -720,15 +732,10 @@ func (d *Driver) appendVmSshKeys() error {
 
 	var SSHKeys string
 
-	vm, err := d.GetVM()
-	if err != nil {
-		return err
-	}
-
 	if len(vm.VirtualMachineConfig.SSHKeys) > 0 {
 		SSHKeys, err = url.QueryUnescape(vm.VirtualMachineConfig.SSHKeys)
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		SSHKeys = strings.TrimSpace(SSHKeys)
@@ -748,13 +755,7 @@ func (d *Driver) appendVmSshKeys() error {
 	SSHKeys = url.PathEscape(SSHKeys)
 	SSHKeys = r.Replace(SSHKeys)
 
-	err3 := d.ConfigureVM("sshkeys", SSHKeys)
-	d.debugf("cloud-init sshkeys set to '%s'", SSHKeys)
-	if err3 != nil {
-		return err3
-	}
-
-	return nil
+	return SSHKeys, nil
 }
 
 func (d *Driver) generateNetString() string {
