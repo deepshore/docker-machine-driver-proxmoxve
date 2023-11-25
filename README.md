@@ -17,6 +17,25 @@ To use this driver you need to have a VM template with cloud-init support.
 
 But do not worry, we have everything in place to get you running: go to the [ansible Folder](./ansible/Readme.md) and check the Readme.md
 
+### Build and Test
+
+- `make`
+- or to fully test create an .env file (example below) and run `make create-machine`:
+   ```.env
+        PVE_CLONE_VMID=100
+        PVE_SSH_USER=ubuntu
+        PVE_PASSWD=secret
+        PVE_REALM=pam
+        PVE_HOST=PVE01.local
+        PVE_NODE=PVE01
+        PVE_USER=root
+        VM_NAME="docker-machine-pve-local"
+   ```
+
+#### Test
+
+`make test`
+
 ## Changes
 
 ### Version v5.0.0-ds

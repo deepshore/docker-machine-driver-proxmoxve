@@ -1,3 +1,6 @@
+SHELL := /bin/bash
+include .env
+export
 
 all: clean test build
 
@@ -26,8 +29,7 @@ install: build
 uninstall:
 	docker-machine --version && rm -f /usr/local/bin/docker-machine-driver-proxmoxve
 
-integration-test: clean build
-	
+create-machine: clean build
 	docker-machine --debug \
     create \
     --driver proxmoxve \
@@ -36,16 +38,16 @@ integration-test: clean build
     --proxmoxve-proxmox-user-name $$PVE_USER \
     --proxmoxve-proxmox-user-password $$PVE_PASSWD \
     --proxmoxve-proxmox-realm $$PVE_REALM \
-    --proxmoxve-proxmox-pool "$$PVE_POOL" \
     --proxmoxve-vm-clone-vmid $$PVE_CLONE_VMID \
     --proxmoxve-vm-memory 8 \
     --proxmoxve-ssh-username $$PVE_SSH_USER \
     --proxmoxve-ssh-password $$PVE_PASSWD \
-    --proxmoxve-vm-vmid-range 8500:9500 \
-    \
+    --proxmoxve-vm-vmid-range "8500:9500" \
     --proxmoxve-debug-driver \
-    \
     $$VM_NAME
 
-undeploy:
+remove-machine-forcefully:
+	docker-machine rm -y --force $$VM_NAME
+
+remove-machine:
 	docker-machine rm -y $$VM_NAME
