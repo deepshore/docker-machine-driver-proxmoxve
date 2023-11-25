@@ -1,4 +1,4 @@
-# Docker Machine Driver for Proxmox VE
+# Docker Machine Driver for Proxmox VE (Deepshore edition)
 
 This driver can be used to kickstart a VM in Proxmox VE to be used with Docker/Docker Machine.
 
