@@ -49,8 +49,6 @@ type Driver struct {
 	Citype          string // Specifies the cloud-init configuration format.
 	NUMA            string // Enable/disable NUMA
 
-	CiEnabled string
-
 	NetModel    string // Net Interface Model, [e1000, virtio, realtek, etc...]
 	NetFirewall string // Enable/disable firewall
 	NetMtu      string // set nic MTU
@@ -82,6 +80,7 @@ func NewDriver(hostName, storePath string) drivers.Driver {
 			MachineName: hostName,
 			StorePath:   storePath,
 		},
+		Citype: "nocloud", // default to nocloud since this driver will only support linux
 	}
 }
 
@@ -117,9 +116,16 @@ func (d *Driver) connectApi() (client *proxmox.Client, err error) {
 	d.client = proxmox.NewClient(proxmoxUrl, options...)
 
 	version, err := d.client.Version(context.Background())
-	if err == nil {
-		log.Info(version.Release)
+	if err != nil {
+		return nil, err
 	}
+	c, err2 := d.client.Cluster(context.Background())
+	if err2 != nil {
+		return nil, err2
+	}
+
+	log.Infof("Connected to pve cluster %s with version: %s", c.Name, version.Version)
+
 	return d.client, err
 }
 
@@ -143,12 +149,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "proxmoxve-proxmox-node",
 			Usage:  "Node to use (defaults to host)",
 			Value:  "",
-		},
-		mcnflag.StringFlag{
-			EnvVar: "PROXMOXVE_PROVISION_STRATEGY",
-			Name:   "proxmoxve-provision-strategy",
-			Usage:  "Provision strategy (cdrom|clone)",
-			Value:  "cdrom",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "PROXMOXVE_PROXMOX_USER_NAME",
@@ -246,12 +246,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Usage:  "vmid to clone",
 			Value:  "",
 		},
-		mcnflag.IntFlag{
-			EnvVar: "PROXMOXVE_VM_CLONE_FULL",
-			Name:   "proxmoxve-vm-clone-full",
-			Usage:  "make a full clone or not (0=false, 1=true, 2=use proxmox default logic",
-			Value:  2,
-		},
 		mcnflag.StringFlag{
 			EnvVar: "PROXMOXVE_VM_START_ONBOOT",
 			Name:   "proxmoxve-vm-start-onboot",
@@ -262,18 +256,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			EnvVar: "PROXMOXVE_VM_PROTECTION",
 			Name:   "proxmoxve-vm-protection",
 			Usage:  "protect the VM and disks from removal (0=false, 1=true, ''=default)",
-			Value:  "", // leave the flag default value blank to support the clone default behavior if not explicity set of 'use what is most appropriate'
-		},
-		mcnflag.StringFlag{
-			EnvVar: "PROXMOXVE_VM_CITYPE",
-			Name:   "proxmoxve-vm-citype",
-			Usage:  "cloud-init type (nocloud|configdrive2)",
-			Value:  "", // leave the flag default value blank to support the clone default behavior if not explicity set of 'use what is most appropriate'
-		},
-		mcnflag.StringFlag{
-			EnvVar: "PROXMOXVE_VM_CIENABLED",
-			Name:   "proxmoxve-vm-cienabled",
-			Usage:  "cloud-init enabled (implied with clone strategy 0=false, 1=true, ''=default)",
 			Value:  "", // leave the flag default value blank to support the clone default behavior if not explicity set of 'use what is most appropriate'
 		},
 		mcnflag.StringFlag{
@@ -370,11 +352,8 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Memory *= 1024
 	d.VMIDRange = flags.String("proxmoxve-vm-vmid-range")
 	d.CloneVMID = flags.String("proxmoxve-vm-clone-vmid")
-	d.CloneFull = flags.Int("proxmoxve-vm-clone-full")
 	d.Onboot = flags.String("proxmoxve-vm-start-onboot")
 	d.Protection = flags.String("proxmoxve-vm-protection")
-	d.Citype = flags.String("proxmoxve-vm-citype")
-	d.CiEnabled = flags.String("proxmoxve-vm-cienabled")
 	d.ImageFile = flags.String("proxmoxve-vm-image-file")
 	d.CPUSockets = flags.String("proxmoxve-vm-cpu-sockets")
 	d.CPU = flags.String("proxmoxve-vm-cpu")
@@ -620,17 +599,10 @@ func (d *Driver) PreCreateCheck() error {
 // Create creates a new VM with storage
 func (d *Driver) Create() error {
 
-	// create and save a new SSH key pair
-	d.debug("creating new ssh keypair")
-	key, err := d.createSSHKey()
-	if err != nil {
-		return err
+	newId, err6 := d.GetVmidInRange()
+	if err6 != nil {
+		return err6
 	}
-
-	// !! Workaround for MC-7982.
-	key = strings.TrimSpace(key)
-	key = fmt.Sprintf("%s %s-%d", key, d.MachineName, time.Now().Unix())
-	// !! End workaround for MC-7982.
 
 	clone := &proxmox.VirtualMachineCloneOptions{
 		Name:    d.MachineName,
@@ -638,6 +610,7 @@ func (d *Driver) Create() error {
 		Pool:    d.Pool,
 		Format:  d.StorageType,
 		Storage: d.Storage,
+		NewID:   newId,
 	}
 
 	d.debugf("cloning new vm from template id '%s'", d.CloneVMID)
@@ -657,7 +630,8 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	newId, task, err := clonevm.Clone(context.Background(), clone)
+	_, task, err := clonevm.Clone(context.Background(), clone)
+	d.debugf("clone task for new vmid '%d' created. newId", newId)
 
 	if err != nil {
 		return err
@@ -712,8 +686,44 @@ func (d *Driver) Create() error {
 	}
 
 	// append newly minted ssh key to existing (if any)
-	d.debugf("retrieving existing cloud-init sshkeys from vmid '%s'", d.VMID)
+	d.appendVmSshKeys()
+
+	// start the VM
+	err = d.Start()
+	if err != nil {
+		return err
+	}
+
+	// wait for the agent and get the IPAddress
+	vmIp, err := d.GetIP()
+	if err != nil {
+		return err
+	}
+
+	d.debugf("VM got an IP: %s", vmIp)
+
+	return nil
+}
+
+func (d *Driver) appendVmSshKeys() error {
+	// create and save a new SSH key pair
+	d.debug("creating new ssh keypair")
+	key, err := d.createSSHKey()
+	if err != nil {
+		return err
+	}
+
+	// !! Workaround for MC-7982.
+	key = strings.TrimSpace(key)
+	key = fmt.Sprintf("%s %s-%d", key, d.MachineName, time.Now().Unix())
+	// !! End workaround for MC-7982.
+
 	var SSHKeys string
+
+	vm, err := d.GetVM()
+	if err != nil {
+		return err
+	}
 
 	if len(vm.VirtualMachineConfig.SSHKeys) > 0 {
 		SSHKeys, err = url.QueryUnescape(vm.VirtualMachineConfig.SSHKeys)
@@ -730,11 +740,8 @@ func (d *Driver) Create() error {
 
 	// specially handle setting sshkeys
 	// https://forum.proxmox.com/threads/how-to-use-pvesh-set-vms-sshkeys.52570/
-	newVM, err2 := d.GetVM()
-	log.Debug(newVM.VMID)
-	if err2 != nil {
-		return err2
-	}
+
+	d.debugf("retrieving existing cloud-init sshkeys from vmid '%s'", d.VMID)
 
 	r := strings.NewReplacer("+", "%2B", "=", "%3D", "@", "%40")
 
@@ -742,68 +749,9 @@ func (d *Driver) Create() error {
 	SSHKeys = r.Replace(SSHKeys)
 
 	err3 := d.ConfigureVM("sshkeys", SSHKeys)
+	d.debugf("cloud-init sshkeys set to '%s'", SSHKeys)
 	if err3 != nil {
 		return err3
-	}
-
-	// start the VM
-	err = d.Start()
-	if err != nil {
-		return err
-	}
-
-	// let VM start a settle a little
-	d.debugf("waiting for VM to start, wait 10 seconds")
-	time.Sleep(10 * time.Second)
-
-	// wait for qemu-guest-agent
-	/*
-		err = newVM.WaitForAgent(context.Background(), 300)
-		if err != nil {
-			return err
-		}
-	*/
-
-	// wait for network to come up
-	d.debugf("wait for network")
-	err = d.waitForNetwork()
-	if err != nil {
-		return err
-	}
-
-	d.debugf("VM network is up. set ip")
-	// set the IPAddress
-	_, err = d.GetIP()
-	if err != nil {
-		return err
-
-	}
-
-	return nil
-}
-
-func (d *Driver) waitForNetwork() error {
-	d.debugf("waiting for VM network to start")
-	d.connectApi()
-
-	var up = false
-	var ip string
-	var err error
-
-	for !up {
-		ip, err = d.GetIP()
-		if err != nil {
-			d.debugf("waiting for VM network to start")
-			time.Sleep(5 * time.Second)
-		} else {
-			if len(ip) > 0 {
-				up = true
-				d.debugf("VM network started with ip: %s", ip)
-			} else {
-				d.debugf("waiting for VM network to start")
-				time.Sleep(5 * time.Second)
-			}
-		}
 	}
 
 	return nil
