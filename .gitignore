@@ -19,5 +19,9 @@ ignore
 
 docker-machine-driver*
 
+# test output files 
+report.xml
+*.log
+
 # we test machine based file generation in this folder
 machines/

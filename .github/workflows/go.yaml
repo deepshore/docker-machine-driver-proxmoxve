@@ -20,9 +20,13 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Test
-        run: go test -v ./...
-      - name: Build
-        run: go build -v ./...
+        run: make run-ci
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            report.xml
   release:
     runs-on: ubuntu-20.04
     needs: [ build ]
