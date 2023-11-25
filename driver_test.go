@@ -50,4 +50,12 @@ func Test_VMIDRangeBroken(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.EqualError(t, err, "VMIDRange must be in the form of <min>:<max>. Given: 100")
 	assert.Empty(t, s)
+
+	driver.(*Driver).VMIDRange = "100:50"
+
+	s2, err2 := driver.(*Driver).GetVmidInRange()
+
+	assert.NotNil(t, err2)
+	assert.EqualError(t, err2, "VMIDRange :<max> must be greater than <min>. Given: 100:50")
+	assert.Empty(t, s2)
 }

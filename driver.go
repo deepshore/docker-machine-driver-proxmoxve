@@ -893,7 +893,7 @@ func (d *Driver) GetVmidInRange() (int, error) {
 	}
 
 	if min > max {
-		return 0, fmt.Errorf("VMIDRange must be in the form of <min>:<max>. Given: %s", d.VMIDRange)
+		return 0, fmt.Errorf("VMIDRange :<max> must be greater than <min>. Given: %s", d.VMIDRange)
 	}
 	// now randomly choose from min max range
 	return rand.Intn(max-min) + min, nil
