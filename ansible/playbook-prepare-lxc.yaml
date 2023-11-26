@@ -1,6 +1,6 @@
 ---
 
-- name: docker-machine proxmox vm template
+- name: prepare the pve host for k3s installation
   connection: ansible.netcommon.network_cli
   gather_facts: false
   hosts: all

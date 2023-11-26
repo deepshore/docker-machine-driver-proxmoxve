@@ -1,31 +1,59 @@
 ---
 - name: LXC
   block:
+    - name: set fact here
+      ansible.builtin.set_fact:
+        # https://docs.ansible.com/ansible/latest/collections/ansible/builtin/random_filter.html
+        pct_id: "{{ 10000 | random(start=9500,seed=inventory_hostname) }}"
+    - name: Print pct ID 
+      ansible.builtin.debug: 
+        msg: 
+          - "generated pct_id: {{ pct_id }}"
+    - name: List local images
+      ansible.builtin.command:
+        cmd: pveam list local
+      register: output_pveam_list
+      ignore_errors: true
+      changed_when: false
+    - name: Add snippet for later use as hookscript
+      ansible.builtin.template:
+        src: ./templates/k3s-lxc-hookscript.pl
+        dest: "{{ proxmox_snippets_path }}/k3s-lxc-hookscript.pl"
+        mode: 0770
+    - name: Add snippet to copy to container on poststart
+      ansible.builtin.template:
+        src: ./templates/k3s-patches.sh
+        dest: "{{ proxmox_snippets_path }}/k3s-patches.sh"
+        mode: 0660
     - name: Update lxc containers
       ansible.builtin.command:
         cmd: pveam update
+      when:
+        - image_file_name not in output_pveam_list.stdout
     - name: Download ubuntu image
       ansible.builtin.command:
-        cmd: pveam download local ubuntu-23.10-standard_23.10-1_amd64.tar.zst
-    - name: set fact here
-      set_fact:
-        cacheable: false
-        # https://docs.ansible.com/ansible/latest/collections/ansible/builtin/random_filter.html
-        pct_id: "{{ 10000 | random(start=9500) }}"
-      run_once: true
-    - name: Print pct ID 
-      debug: var=pct_id
-    - name: Download ubuntu image
+        cmd: "pveam download local {{ image_file_name }}"
+      when:
+        - image_file_name not in output_pveam_list.stdout
+    - name: Create pct template
       ansible.builtin.command:
         argv:
           - pct 
           - create 
           - "{{ pct_id }}"
-          - local:vztmpl/ubuntu-23.10-standard_23.10-1_amd64.tar.zst
+          - "local:vztmpl/{{ image_file_name }}"
           - --storage
           - local-lvm
-          - --features
-          - nesting=1
+          - --net0
+          - name=eth0,bridge=vmbr0,ip=dhcp
+          - --swap
+          - 0
+          - --memory
+          - "{{ image_default_memory }}"
+          - --hookscript
+          - "cephfs:snippets/k3s-lxc-hookscript.pl"
+          - --hostname
+          - "{{ image_prefix }}{{ image_name }}"
           - --template
     - name: Disable container security cgroup and apparmor 1 !!!!
       ansible.builtin.lineinfile:
@@ -47,3 +75,9 @@
         path: /etc/pve/lxc/{{ pct_id }}.conf
         regexp: '^lxc.mount.auto:'
         line: 'lxc.mount.auto: "proc:rw sys:rw"'
+    - name: Print pct ID 
+      ansible.builtin.debug: 
+        msg: 
+          - "ct template created with id: {{ pct_id }}"
+          - "you can now run something like this:"
+          - "pct clone {{ pct_id }} NEW_ID --full --hostname MyContainer"

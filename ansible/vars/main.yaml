@@ -1,0 +1,9 @@
+---
+proxmox_vm_ipconfig: ip=dhcp
+proxmox_snippets_path: /mnt/pve/cephfs/snippets
+image_prefix: "template-"
+image_name: "ubuntu-23.10"
+image_file_name: "ubuntu-23.10-standard_23.10-1_amd64.tar.zst"
+image_default_memory: 1024
+storage_name: vm_ssd
+clean_before_build: false

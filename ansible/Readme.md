@@ -25,6 +25,25 @@ all:
 
 `ansible-playbook --inventory-file inventory.yaml -u root -k -e ansible_network_os=vyos.vyos.vyos -e vmname=ubuntu-cloud playbook.yaml`
 
+
+## playbooks for lxc
+
+!!! FOLLOWING IS NOT RECOMMENDED FOR PRODUCTION USE - SAFETY ALERT !!!
+
+Do not use the following playbooks without understanding them.
+They are adjusted for a certain usecase (k8s) on proxmox lxcs and therefore contain several configurations
+that disable lxc safety on cgroup and apparmor level.
+
+these playbook were heavily inspired by [this medium post](https://kevingoos.medium.com/kubernetes-inside-proxmox-lxc-cce5c9927942)
+
+ok, so lets do this...
+
+If you want the same logic as for vms but for lxcs on proxmox, use the following playbooks:
+
+- `playbook-prepare-lxc.yaml` to prepare the lxc host (run on each pve node)
+- `playbook-create-lxc.yaml` to create the lxc template (also run for each pve node)
+
+
 ### debug + dev
 
 add this to the command above to dry-run your changes:

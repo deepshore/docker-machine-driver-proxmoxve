@@ -1,9 +1,14 @@
 ---
 
-- name: docker-machine proxmox vm template
+- name: create proxmox lxc template
   connection: ansible.netcommon.network_cli
   gather_facts: false
   hosts: all
+  vars_files:
+    - vars/main.yaml
   tasks:
-    - name: Create an lxc
+    - name: Clean old templates
+      include_tasks: tasks/clean-lxc.yaml
+      when: clean_before_build
+    - name: Create an lxc template
       include_tasks: tasks/create-lxc.yaml

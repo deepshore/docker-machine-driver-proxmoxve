@@ -1,0 +1,8 @@
+---
+- name: delete stopped containers that are templates
+  shell: "pct list | grep stopped | grep -i {{ image_prefix }} | awk -F ' ' '{print $1}' | xargs -L1 pct destroy"
+  register: list_output
+  ignore_errors: true
+
+- debug:
+    msg: "stdout: {{ list_output.stdout }}"
