@@ -1,0 +1,9 @@
+---
+
+- name: docker-machine proxmox vm template
+  connection: ansible.netcommon.network_cli
+  gather_facts: false
+  hosts: all
+  tasks:
+    - name: Prepare the pve host for k3s installation
+      include_tasks: tasks/prepare-lxc-host.yaml

@@ -1,0 +1,33 @@
+---
+- name: Prepare LXC Host to run k3sos container
+  block:
+    - name: Set net.ipv4.ip_forward to 1
+      ansible.builtin.lineinfile:
+        path: /etc/sysctl.conf
+        regexp: '[#]?net\.ipv4\.ip_forward='
+        line: net.ipv4.ip_forward=1
+    - name: Set swapiness to 0
+      ansible.builtin.lineinfile:
+        path: /etc/sysctl.conf
+        regexp: '^vm.swapiness='
+        line: vm.swapiness=0
+    - name: Disable swap
+      ansible.builtin.command:
+        cmd: swapoff -a
+    - name: "Ensure /proc/swaps has no entries"
+      lineinfile:
+        name: /proc/swaps
+        regexp: "^/dev.*$"
+        state: absent
+      check_mode: yes # ensures that this step does not actually do anything
+      register: conf
+      failed_when: (conf is changed) or (conf is failed)
+    - name: Disable pve swap mount
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^/dev/pve/swap'
+        line: '#/dev/pve/swap none swap sw 0 0'
+        state: present
+    - name: Reload fstab
+      ansible.builtin.command:
+        cmd: mount -a
