@@ -1,0 +1,49 @@
+---
+- name: LXC
+  block:
+    - name: Update lxc containers
+      ansible.builtin.command:
+        cmd: pveam update
+    - name: Download ubuntu image
+      ansible.builtin.command:
+        cmd: pveam download local ubuntu-23.10-standard_23.10-1_amd64.tar.zst
+    - name: set fact here
+      set_fact:
+        cacheable: false
+        # https://docs.ansible.com/ansible/latest/collections/ansible/builtin/random_filter.html
+        pct_id: "{{ 10000 | random(start=9500) }}"
+      run_once: true
+    - name: Print pct ID 
+      debug: var=pct_id
+    - name: Download ubuntu image
+      ansible.builtin.command:
+        argv:
+          - pct 
+          - create 
+          - "{{ pct_id }}"
+          - local:vztmpl/ubuntu-23.10-standard_23.10-1_amd64.tar.zst
+          - --storage
+          - local-lvm
+          - --features
+          - nesting=1
+          - --template
+    - name: Disable container security cgroup and apparmor 1 !!!!
+      ansible.builtin.lineinfile:
+        path: /etc/pve/lxc/{{ pct_id }}.conf
+        regexp: '^lxc.apparmor.profile:'
+        line: "lxc.apparmor.profile: unconfined"
+    - name: Disable container security cgroup and apparmor 2 !!!!
+      ansible.builtin.lineinfile:
+        path: /etc/pve/lxc/{{ pct_id }}.conf
+        regexp: '^lxc.cgroup2.devices.allow:'
+        line: "lxc.cgroup2.devices.allow: a"
+    - name: Disable container security cgroup and apparmor 3 !!!!
+      ansible.builtin.lineinfile:
+        path: /etc/pve/lxc/{{ pct_id }}.conf
+        regexp: '^lxc.cap.drop:'
+        line: "lxc.cap.drop:"
+    - name: Disable container security cgroup and apparmor 4 !!!!
+      ansible.builtin.lineinfile:
+        path: /etc/pve/lxc/{{ pct_id }}.conf
+        regexp: '^lxc.mount.auto:'
+        line: 'lxc.mount.auto: "proc:rw sys:rw"'
