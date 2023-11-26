@@ -24,3 +24,9 @@ all:
 ## run 
 
 `ansible-playbook --inventory-file inventory.yaml -u root -k -e ansible_network_os=vyos.vyos.vyos -e vmname=ubuntu-cloud playbook.yaml`
+
+### debug + dev
+
+add this to the command above to dry-run your changes:
+
+`--check --diff`
