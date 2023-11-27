@@ -1,6 +1,6 @@
 module github.com/deepshore/docker-machine-driver-proxmoxve
 
-go 1.19
+go 1.20
 
 require (
 	github.com/labstack/gommon v0.4.1
