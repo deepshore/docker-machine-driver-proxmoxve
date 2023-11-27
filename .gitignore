@@ -11,8 +11,19 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+.env
+
 # we don't want to include the source files of the dependencies
 vendor
 
 thunder-tests
 ignore
+
+docker-machine-driver*
+
+# test output files 
+report.xml
+*.log
+
+# we test machine based file generation in this folder
+machines/

@@ -3,8 +3,8 @@
   block:
     - name: Download cloud img
       get_url:
-        url: https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64.img
-        dest: /root/focal-server-cloudimg-amd64.img
+        url: https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64.img
+        dest: /root/ubuntu-22.04-minimal-cloudimg-amd64.img
         mode: '0440'
 
     - name: Get next free VM ID
@@ -19,7 +19,7 @@
       command: "qm create {{ vmid.stdout }} --memory 2048 --core 2 --name {{ vmname }} --net0 virtio,bridge=vmbr0"
 
     - name: Import the downloaded Ubuntu disk to storage
-      command: "qm importdisk {{ vmid.stdout }} focal-server-cloudimg-amd64.img {{ storage_name | default('local-lvm') }}"
+      command: "qm importdisk {{ vmid.stdout }} ubuntu-22.04-minimal-cloudimg-amd64.img {{ storage_name | default('local-lvm') }}"
 
     - name: Attach the new disk to the vm as a scsi drive on the scsi controller
       command: "qm set {{ vmid.stdout }} --scsihw virtio-scsi-pci --scsi0 {{ storage_name | default('local-lvm') }}:vm-{{ vmid.stdout }}-disk-0"
