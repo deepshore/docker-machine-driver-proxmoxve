@@ -633,7 +633,7 @@ func (d *Driver) Create() error {
 	}
 
 	_, task, err := clonevm.Clone(context.Background(), clone)
-	d.debugf("clone task for new vmid '%d' created. newId", newId)
+	d.debugf("clone task for new vmid '%d' created", newId)
 
 	if err != nil {
 		return err
