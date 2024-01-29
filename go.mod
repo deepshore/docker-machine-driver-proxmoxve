@@ -18,7 +18,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/diskfs/go-diskfs v1.2.0 // indirect
-	github.com/docker/docker v20.10.2+incompatible // indirect
+	github.com/docker/docker v20.10.27+incompatible // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/jinzhu/copier v0.3.4 // indirect
 	github.com/magefile/mage v1.14.0 // indirect
