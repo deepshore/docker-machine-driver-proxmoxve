@@ -69,6 +69,9 @@ type Driver struct {
 	CPUSockets    string // The number of cpu sockets.
 	CPUCores      string // The number of cores per socket.
 	driverDebug   bool   // driver debugging
+
+	taskTimeout  time.Duration // The number of seconds until an individual task times out
+	taskInterval time.Duration // The number of seconds until an individual task times out
 }
 
 // NewDriver returns a new driver
@@ -316,6 +319,18 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "proxmoxve-debug-driver",
 			Usage:  "enables debugging in the driver",
 		},
+		mcnflag.IntFlag{
+			EnvVar: "PROXMOXVE_TASK_TIMEOUT",
+			Name:   "proxmoxve-task-timeout",
+			Usage:  "timeout in seconds for each individual creation related task",
+			Value:  300,
+		},
+		mcnflag.IntFlag{
+			EnvVar: "PROXMOXVE_TASK_INTERVAL",
+			Name:   "proxmoxve-task-interval",
+			Usage:  "interval in seconds for each individual creation related task",
+			Value:  5,
+		},
 	}
 }
 
@@ -370,6 +385,10 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.GuestSSHPort = flags.Int("proxmoxve-ssh-port")
 	d.GuestUsername = flags.String("proxmoxve-ssh-username")
 	d.GuestPassword = flags.String("proxmoxve-ssh-password")
+
+	// Task timeout
+	d.taskTimeout = time.Duration(flags.Int("proxmoxve-task-timeout")) * time.Second
+	d.taskInterval = time.Duration(flags.Int("proxmoxve-task-interval")) * time.Second
 
 	return nil
 }
@@ -434,7 +453,7 @@ func (d *Driver) ConfigureVM(name string, value string) error {
 	}
 
 	// wait for the config task
-	if err4 := configTask.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err4 != nil {
+	if err4 := configTask.Wait(context.Background(), d.taskInterval, d.taskTimeout); err4 != nil {
 		return err4
 	}
 
@@ -458,7 +477,7 @@ func (d *Driver) OperateVM(operation string) error {
 			return err2
 		}
 		// wait for the task
-		if err3 := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err3 != nil {
+		if err3 := task.Wait(context.Background(), d.taskInterval, d.taskTimeout); err3 != nil {
 			return err3
 		}
 	case "stop":
@@ -468,7 +487,7 @@ func (d *Driver) OperateVM(operation string) error {
 			return err2
 		}
 		// wait for the task
-		if err3 := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err3 != nil {
+		if err3 := task.Wait(context.Background(), d.taskInterval, d.taskTimeout); err3 != nil {
 			return err3
 		}
 	case "kill":
@@ -478,7 +497,7 @@ func (d *Driver) OperateVM(operation string) error {
 			return err2
 		}
 		// wait for the task
-		if err3 := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err3 != nil {
+		if err3 := task.Wait(context.Background(), d.taskInterval, d.taskTimeout); err3 != nil {
 			return err3
 		}
 	case "restart":
@@ -488,7 +507,7 @@ func (d *Driver) OperateVM(operation string) error {
 			return err2
 		}
 		// wait for the task
-		if err3 := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err3 != nil {
+		if err3 := task.Wait(context.Background(), d.taskInterval, d.taskTimeout); err3 != nil {
 			return err3
 		}
 	default:
@@ -640,7 +659,7 @@ func (d *Driver) Create() error {
 	}
 
 	// wait for the clone task
-	if err := task.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err != nil {
+	if err := task.Wait(context.Background(), d.taskInterval, d.taskTimeout); err != nil {
 		return err
 	}
 	d.debugf("clone finished for vmid '%d'", newId)
@@ -805,7 +824,7 @@ func (d *Driver) Remove() error {
 		return err2
 	}
 	// wait for the stop task
-	if err3 := stopTask.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err3 != nil {
+	if err3 := stopTask.Wait(context.Background(), d.taskInterval, d.taskTimeout); err3 != nil {
 		return err3
 	}
 
@@ -815,7 +834,7 @@ func (d *Driver) Remove() error {
 	}
 
 	// wait for the delete task
-	if err5 := deleteTask.Wait(context.Background(), time.Duration(5*time.Second), time.Duration(300*time.Second)); err5 != nil {
+	if err5 := deleteTask.Wait(context.Background(), d.taskInterval, d.taskTimeout); err5 != nil {
 		return err5
 	}
 
