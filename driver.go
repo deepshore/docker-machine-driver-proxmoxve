@@ -102,6 +102,7 @@ func (d *Driver) connectApi() (client *proxmox.Client, err error) {
 	var options []proxmox.Option
 
 	options = append(options, proxmox.WithHTTPClient(&http.Client{
+		Timeout: d.taskTimeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
@@ -541,7 +542,7 @@ func (d *Driver) GetVM() (*proxmox.VirtualMachine, error) {
 func (d *Driver) GetIP() (string, error) {
 	vm, err := d.GetVM()
 
-	if err := vm.WaitForAgent(context.Background(), 300); err != nil {
+	if err := vm.WaitForAgent(context.Background(), int(d.taskTimeout.Seconds())); err != nil {
 		return "", err
 	}
 	net := vm.VirtualMachineConfig.Net0
