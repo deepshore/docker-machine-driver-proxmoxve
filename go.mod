@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/labstack/gommon v0.4.1
 	github.com/luthermonson/go-proxmox v0.0.0-beta6
-	github.com/rancher/machine v0.15.0-rancher98
+	github.com/rancher/machine v0.15.0-rancher99
 )
 
 require (

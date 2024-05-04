@@ -38,6 +38,11 @@ But do not worry, we have everything in place to get you running: go to the [ans
 
 ## Changes
 
+### Version v5.0.1-ds
+
+- Add settings for task timeout and task interval (for slow pve systems and connections) 
+- Update of [pve driver](https://github.com/luthermonson/go-proxmox) to v0.0.0-beta6
+
 ### Version v5.0.0-ds
 
 - General Rewrite of driver by using a new api driver for pve https://github.com/luthermonson/go-proxmox (tested for pve6,7,8)
