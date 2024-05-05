@@ -1,0 +1,127 @@
+---
+  - name: Get next free VM ID
+    command: pvesh get /cluster/nextid
+    register: vmid
+    changed_when: false
+
+  - debug:
+      msg: "Got VM ID: {{ vmid.stdout }}"
+
+  - name: Create a new virtual machine
+    command: "qm create {{ vmid.stdout }} --agent enabled=1 --memory 2048 --cpu cputype=host --core 2 --pool {{ template_pool }} --name {{ image_name }} --net0 virtio,bridge=vmbr0 --storage {{ storage_name | default('local-lvm') }}"
+
+  - name: Import the downloaded disk to storage
+    command: "qm disk import {{ vmid.stdout }} /tmp/{{ image_name }} {{ storage_name | default('local-lvm') }}"
+    register: disk_import
+  
+  - name: get imported disk id
+    shell: echo "{{ disk_import.stdout }}" | grep unused0 | awk -F '{{ storage_name }}:' '{print $2}' | sed 's/.$//'
+    register: grep_disk_import_disk_id
+    changed_when: false
+
+  - set_fact:
+      imported_disk_id: "{{ grep_disk_import_disk_id.stdout }}"  
+
+  - name: Attach the new disk to the vm as a scsi drive on the scsi controller
+    command: "qm set {{ vmid.stdout }} --scsihw virtio-scsi-pci --scsi0 {{ storage_name | default('local-lvm') }}:{{ imported_disk_id }},discard=on"
+
+  - name: Resize the disk for os updates to install on initial boot
+    command: "qm resize {{ vmid.stdout }} scsi0 +10G"
+
+  - name: Add cloud init drive
+    command: "qm set {{ vmid.stdout }} --ide2 {{ storage_name | default('local-lvm') }}:cloudinit"
+
+  - name: Make the cloud init drive bootable and restrict BIOS to boot from disk only
+    command: "qm set {{ vmid.stdout }} --boot c --bootdisk scsi0"
+
+  - name: Add serial console
+    command: "qm set {{ vmid.stdout }} --serial0 socket --vga serial0"
+
+  - name: create temporary file
+    tempfile:
+      state: file
+    register: tempfile
+
+  - name: Save SSH-keys to temporary file
+    copy:
+      content: "{{ proxmox_vm_sshkeys }}"
+      dest: "{{ tempfile.path }}"
+
+  - name: Creates snippets directory
+    file:
+      path: "{{ proxmox_snippets_path }}"
+      state: directory
+
+  - name: Add vendor snippet
+    ansible.builtin.template:
+      src: ./templates/cloud-config-{{ os_type }}.yaml
+      dest: "{{ proxmox_snippets_path }}/vendor-{{ os_type }}.yaml"
+      mode: 0770
+
+  # https://pve.proxmox.com/wiki/Cloud-Init_Support
+  - name: Set cloud-init options
+    shell: |
+      qm set {{ vmid.stdout }} --sshkey {{ tempfile.path }}
+      qm set {{ vmid.stdout }} --ipconfig0 ip=dhcp
+      qm set {{ vmid.stdout }} --cicustom 'vendor=cephfs:snippets/vendor-{{ os_type }}.yaml'
+
+  - name: check meta
+    command: qm cloudinit dump {{ vmid.stdout }} meta
+    register: dump_meta
+  
+  - debug:
+      msg: "{{ dump_meta.stdout }}"
+
+  - name: check network
+    command: qm cloudinit dump {{ vmid.stdout }} network
+    register: dump_network
+
+  - debug:
+      msg: "{{ dump_network.stdout }}"
+
+  - name: check user
+    command: qm cloudinit dump {{ vmid.stdout }} user
+    register: dump_user
+
+  - debug:
+      msg: "{{ dump_user.stdout }}"
+
+  - name: Create template
+    command: "qm template {{ vmid.stdout }}"
+
+  - name: Get next free VM ID for n2
+    command: pvesh get /cluster/nextid
+    register: vmid2
+    changed_when: false
+
+  - name: Create template config for n2
+    shell: "sed -r 's/name: (.*)/name: \\1-basedon{{ vmid.stdout }}/' /etc/pve/qemu-server/{{ vmid.stdout }}.conf  > /etc/pve/nodes/pa3553/qemu-server/{{ vmid2.stdout }}.conf"
+
+  - name: Add vmid2 to pool 
+    shell: "pvesh set /pools/{{ template_pool }} -vms {{ vmid2.stdout }}"
+    ignore_errors: true
+    # sometimes a invisible (old?) reference remains in the pool and you get:
+    # "update pools failed: VM 131 is already a pool member"
+    # so we ignore all errors here since this is a cosmetic issue.
+
+  - name: Get next free VM ID for n3
+    command: pvesh get /cluster/nextid
+    register: vmid3
+    changed_when: false
+
+  - name: Create template config for n3
+    shell: "sed -r 's/name: (.*)/name: \\1-basedon{{ vmid.stdout }}/' /etc/pve/qemu-server/{{ vmid.stdout }}.conf  > /etc/pve/nodes/s50/qemu-server/{{ vmid3.stdout }}.conf"
+
+  - name: Add vmid3 to pool 
+    shell: "pvesh set /pools/{{ template_pool }} -vms {{ vmid3.stdout }}"
+    ignore_errors: true 
+    # sometimes a invisible (old?) reference remains in the pool and you get:
+    # "update pools failed: VM 131 is already a pool member"
+    # so we ignore all errors here since this is a cosmetic issue.
+
+  - debug:
+      msg: |
+        Finished Template 
+        Template VM ID n1: {{ vmid.stdout }}
+        Template VM ID n2: {{ vmid2.stdout }}
+        Template VM ID n3: {{ vmid3.stdout }}

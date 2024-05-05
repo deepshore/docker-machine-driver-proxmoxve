@@ -1,0 +1,8 @@
+---
+- name: clean images
+  shell: "qm list --full | grep stopped | grep -i {{ image_prefix }} | awk -F ' ' '{print $1}' | xargs --max-lines=1 --max-procs=5 qm destroy"
+  register: clean_output
+  ignore_errors: true
+
+- debug:
+    msg: "stdout: {{ clean_output.stdout }}"

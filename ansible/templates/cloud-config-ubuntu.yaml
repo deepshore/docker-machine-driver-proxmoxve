@@ -1,0 +1,18 @@
+#cloud-config
+packages:
+  - qemu-guest-agent
+  - nfs-common
+package_update: true
+package_upgrade: false
+ntp:
+  enabled: true
+  ntp_client: chrony  # Uses cloud-init default chrony configuration
+  pools: [0.de.pool.ntp.org, 1.de.pool.ntp.org, 2.de.pool.ntp.org]
+system_info:
+  default_user:
+    name: root
+power_state:
+  delay: 0
+  mode: reboot
+  message: Rebooting machine
+  condition: true
