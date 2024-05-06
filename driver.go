@@ -71,7 +71,7 @@ type Driver struct {
 	driverDebug   bool   // driver debugging
 
 	taskTimeout  time.Duration // The number of seconds until an individual task times out
-	taskInterval time.Duration // The number of seconds until an individual task times out
+	taskInterval time.Duration // The number of seconds to wait within a task loop
 }
 
 // NewDriver returns a new driver
