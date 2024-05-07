@@ -1,0 +1,19 @@
+---
+- name: clean images
+  shell: >
+    `# retrieve all vm templates `
+    grep -R 'template: 1' /etc/pve/qemu-server/ | 
+    `# cut filename`
+    awk -F ':' '{print $1}' | 
+    `# match prefix of template name to image_prefix`
+    xargs --max-lines=1 grep -H 'name: {{ image_prefix }}' | 
+    `# extract vmid`
+    awk -F '.conf' '{print $1}' | 
+    awk -F 'qemu-server/' '{print $2}' | 
+    `# remove template vm`
+    xargs --max-lines=1 --max-procs=5 qm destroy
+  register: clean_output
+  ignore_errors: true
+
+- debug:
+    msg: "stdout: {{ clean_output.stdout }}"

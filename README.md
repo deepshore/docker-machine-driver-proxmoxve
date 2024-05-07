@@ -2,6 +2,8 @@
 
 This driver can be used to kickstart a VM in Proxmox VE to be used with Docker/Docker Machine.
 
+* NOTE: docker-machine is not actively developed anymore so rancher/machine should be used as cli: https://github.com/rancher/machine
+
 * [Download](https://github.com/lnxbil/docker-machine-driver-proxmox-ve/releases) and copy it into your `PATH` (don't forget to `chmod +x`) or build your own driver
 * Check if it works with this super long commandline:
 
@@ -37,6 +39,11 @@ But do not worry, we have everything in place to get you running: go to the [ans
 `make test`
 
 ## Changes
+
+### Version v5.0.1-ds
+
+- Add settings for task timeout and task interval (for slow pve systems and connections) 
+- Update of [pve driver](https://github.com/luthermonson/go-proxmox) to v0.0.0-beta6
 
 ### Version v5.0.0-ds
 

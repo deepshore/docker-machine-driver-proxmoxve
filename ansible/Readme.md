@@ -23,4 +23,15 @@ all:
 
 ## run 
 
-`ansible-playbook --inventory-file inventory.yaml -u root -k -e ansible_network_os=vyos.vyos.vyos -e vmname=ubuntu-cloud playbook.yaml`
+`ansible-playbook --inventory-file inventory.yaml -u root -k playbook.yaml`
+
+if you have multiple proxmox nodes in your inventory file then limit to the first:
+
+`ansible-playbook --inventory-file inventory.yaml -u root -k playbook.yaml --limit firstnode`
+
+
+## clean old templates
+
+this should be applied to all proxmox nodes to clean templates according to `image_prefix` defined in vars.
+
+`ansible-playbook --inventory-file inventory.yaml -u root -k playclean.yaml`

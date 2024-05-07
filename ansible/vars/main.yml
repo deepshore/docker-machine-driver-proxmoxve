@@ -1,0 +1,7 @@
+---
+proxmox_snippets_path: /mnt/pve/cephfs/snippets
+image_prefix: "template-"
+storage_name: vm_ssd
+template_pool: K3S
+ansible_network_os: vyos.vyos.vyos
+vmname: ubuntu-jammy

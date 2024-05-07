@@ -1,0 +1,19 @@
+---
+- name: Create new ubuntu VM Template
+  block:
+    - name: get current ubuntu img tag
+      shell: curl -s https://cloud-images.ubuntu.com/jammy/ | grep href=\"$(date +"%Y") | awk -F '> <a href="' '{print $2}' | awk -F '/"' '{print $1}' | sort -nr | head -1
+      register: daily_tag
+      changed_when: false
+
+    - set_fact:
+        image_name: "{{ image_prefix }}jammy-server-cloudimg-amd64-{{ daily_tag.stdout }}"
+        os_type: "ubuntu"
+
+    - name: Download cloud img
+      get_url:
+        url: https://cloud-images.ubuntu.com/jammy/{{ daily_tag.stdout }}/jammy-server-cloudimg-amd64.img
+        dest: /tmp/{{ image_name }}
+        mode: '0440'
+
+    - include_tasks: t99-create-vmtemplate.yaml
