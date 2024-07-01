@@ -55,6 +55,8 @@ type Driver struct {
 	NetBridge   string // bridge applied to network interface
 	NetVlanTag  int    // vlan tag
 
+	HostPci0 string // host pci adapter that should be attached via passthrough https://pve.proxmox.com/wiki/PCI(e)_Passthrough
+
 	ScsiController string
 	ScsiAttributes string
 
@@ -298,6 +300,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value:  0,
 		},
 		mcnflag.StringFlag{
+			EnvVar: "PROXMOXVE_VM_HOSTPCI0",
+			Name:   "proxmoxve-vm-hostpci0",
+			Usage:  "pci(e) device from host to attach to vm",
+			Value:  "", // default blank means no device will be attached
+		},
+		mcnflag.StringFlag{
 			EnvVar: "PROXMOXVE_SSH_USERNAME",
 			Name:   "proxmoxve-ssh-username",
 			Usage:  "Username to log in to the guest OS (default docker for rancheros)",
@@ -378,6 +386,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.NetMtu = flags.String("proxmoxve-vm-net-mtu")
 	d.NetBridge = flags.String("proxmoxve-vm-net-bridge")
 	d.NetVlanTag = flags.Int("proxmoxve-vm-net-tag")
+	d.HostPci0 = flags.String("proxmoxve-vm-hostpci0")
 	d.ScsiController = flags.String("proxmoxve-vm-scsi-controller")
 	d.ScsiAttributes = flags.String("proxmoxve-vm-scsi-attributes")
 	d.driverDebug = flags.Bool("proxmoxve-debug-driver")
@@ -526,7 +535,7 @@ func (d *Driver) GetVM() (*proxmox.VirtualMachine, error) {
 	}
 
 	n, err := d.GetNode(d.Node)
-	d.debugf("GetNode returned: %v", n)
+	d.debugf("GetNode returned: '%s' PVEVersion: '%s'", n.Name, n.PVEVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -534,7 +543,7 @@ func (d *Driver) GetVM() (*proxmox.VirtualMachine, error) {
 	if err2 != nil {
 		return nil, err2
 	}
-	d.debugf("GetVM returned: %v", vm)
+	d.debugf("GetVM returned VMID: '%s' with Status: '%s'", vm.VMID, vm.Status)
 	return vm, err
 }
 
@@ -693,6 +702,7 @@ func (d *Driver) Create() error {
 	d.ConfigureVM("citype", d.Citype)
 	d.ConfigureVM("onboot", d.Onboot)
 	d.ConfigureVM("protection", d.Protection)
+	d.ConfigureVM("hostpci0", d.HostPci0)
 
 	if len(d.NetBridge) > 0 {
 		d.ConfigureVM("net0", d.generateNetString())
