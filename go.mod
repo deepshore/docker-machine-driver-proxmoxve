@@ -3,7 +3,7 @@ module github.com/deepshore/docker-machine-driver-proxmoxve
 go 1.20
 
 require (
-	github.com/labstack/gommon v0.4.1
+	github.com/labstack/gommon v0.4.2
 	github.com/luthermonson/go-proxmox v0.1.0
 	github.com/rancher/machine v0.15.0-rancher99
 )
