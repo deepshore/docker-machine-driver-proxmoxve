@@ -40,6 +40,11 @@ But do not worry, we have everything in place to get you running: go to the [ans
 
 ## Changes
 
+### Version v5.0.2-ds
+
+- Add pci device passthrough parameter
+- Update library and fix vm deletion issue
+
 ### Version v5.0.1-ds
 
 - Add settings for task timeout and task interval (for slow pve systems and connections) 
