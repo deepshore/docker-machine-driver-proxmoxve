@@ -702,7 +702,10 @@ func (d *Driver) Create() error {
 	d.ConfigureVM("citype", d.Citype)
 	d.ConfigureVM("onboot", d.Onboot)
 	d.ConfigureVM("protection", d.Protection)
-	d.ConfigureVM("hostpci0", d.HostPci0)
+
+	if len(d.HostPci0) > 0 {
+		d.ConfigureVM("hostpci0", d.HostPci0)
+	}
 
 	if len(d.NetBridge) > 0 {
 		d.ConfigureVM("net0", d.generateNetString())
@@ -835,9 +838,13 @@ func (d *Driver) Remove() error {
 		return err2
 	}
 	// wait for the stop task
-	if err3 := stopTask.Wait(context.Background(), d.taskInterval, d.taskTimeout); err3 != nil {
-		return err3
+	vmStoppedStatus, vmStoppedCompleted, vmStoppedErr := stopTask.WaitForCompleteStatus(context.Background(), int(d.taskTimeout.Seconds()))
+	if vmStoppedErr != nil {
+		return vmStoppedErr
 	}
+
+	d.debugf("VM stopped status: %s", vmStoppedStatus)
+	d.debugf("VM stop completed: %s", vmStoppedCompleted)
 
 	deleteTask, err4 := vm.Delete(context.Background())
 	if err4 != nil {
@@ -845,9 +852,13 @@ func (d *Driver) Remove() error {
 	}
 
 	// wait for the delete task
-	if err5 := deleteTask.Wait(context.Background(), d.taskInterval, d.taskTimeout); err5 != nil {
-		return err5
+	vmDelStatus, vmDelCompleted, vmDelErr := deleteTask.WaitForCompleteStatus(context.Background(), int(d.taskTimeout.Seconds()))
+	if vmDelErr != nil {
+		return vmDelErr
 	}
+
+	d.debugf("VM delete status: %s", vmDelStatus)
+	d.debugf("VM delete completed: %s", vmDelCompleted)
 
 	return nil
 }
