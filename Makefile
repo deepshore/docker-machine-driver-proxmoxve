@@ -29,7 +29,7 @@ install: build
 uninstall:
 	docker-machine --version && rm -f /usr/local/bin/docker-machine-driver-proxmoxve
 
-create-machine: clean build
+create-machine: remove-machine-forcefully clean build install
 	docker-machine --debug \
     create \
     --driver proxmoxve \
