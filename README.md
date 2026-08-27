@@ -1,3 +1,10 @@
+> [!IMPORTANT]
+> **This repository has been moved.**
+> As of **2026-08-27** this project now lives at **https://codeberg.org/deepshore/docker-machine-driver-proxmoxve**.
+> This GitHub repository is **archived and read-only**. Please update your bookmarks, clones, and CI references.
+
+---
+
 # Docker Machine Driver for Proxmox VE (Deepshore edition)
 
 This driver can be used to kickstart a VM in Proxmox VE to be used with Docker/Docker Machine.
